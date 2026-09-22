@@ -31,6 +31,8 @@ Large packs can be split into smaller chunks so they are easier to browse in ReS
 
 Leave it at 256 unless you prefer smaller groups.
 
+Note: Larger packs mainly use a tiny bit more texture memory; they do not significantly increase the performance cost of the active MultiLUT shader. Splitting into smaller chunks is primarily for easier browsing and organization.
+
 ## Pre-LUT / input transform
 
 Leave this as **None** for normal use.
