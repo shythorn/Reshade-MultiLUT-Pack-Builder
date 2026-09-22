@@ -1,18 +1,20 @@
 # MultiLUT Pack Builder
 
-A browser tool that converts `.cube` and common Autodesk/Lustre `.3dl` LUTs into ReShade-compatible MultiLUT packs.
+A .html tool that converts `.cube` and common Autodesk/Lustre `.3dl` LUTs into ReShade-compatible MultiLUT packs.
 
 **[Open MultiLUT Pack Builder](https://shythorn.github.io/Reshade-MultiLUT-Pack-Builder/)** or download .html from **[Releases Page](https://github.com/shythorn/Reshade-MultiLUT-Pack-Builder/releases)** and open in browser.
 
-Add your LUTs, convert, and download a ready-to-install ZIP.
+Add your LUTs, convert, and download a ready-to-install reshade fx ZIP.
 
 ## Features
 
-- Convert `.cube` and `.3dl` LUTs into ReShade MultiLUT packs
-- Add individual LUTs or a whole folder
-- Optional Pre-LUT / input transform
+- Convert `.cube` and `.3dl` LUTs into custom ReShade MultiLUT packs
+- Automatic naming in shader's LUT selection list (using original file name)
+- Optional Pre-LUT / input transform / conversion LUTs
 - Split large LUT collections into smaller shader groups
 - Sort LUTs by filename or the order they were added
+- "Red fastest" LUT compatibility option for `.3dl`  files
+- Generates shader `.fx`, texture atlas `.png` and an index `.txt`
 - Download everything as one ZIP
 
 ## How to use
@@ -21,23 +23,23 @@ Add your LUTs, convert, and download a ready-to-install ZIP.
 2. Add your LUT files or folder.
 3. Set a pack name and adjust any optional settings you need.
 4. Click **Convert & Download ZIP**.
-5. Copy the generated `Shaders` and `Textures` files into the matching ReShade folders.
+5. Copy the generated `Shaders` and `Textures` files into the matching ReShade folders. (usually in reshade-shaders folder in your game directory)
 
 ## Chunks
 
-A chunk is one generated MultiLUT shader. Each shader can contain up to **256 LUTs**.
+A chunk is how big is one generated MultiLUT shader. Each shader can contain up to **256 LUTs**.
 
-Large packs can be split into smaller chunks so they are easier to browse in ReShade. For example, 600 LUTs with a chunk size of 256 will create three shaders: 256 + 256 + 88 LUTs.
+Large packs can be split into smaller chunks so they are easier to browse in ReShade. For example, 600 LUTs with a chunk size of 256 will create three shaders: 256 + 256 + 88 LUTs. First pack will use the name input, next ones will be tagged with _2, _3 and so on.
 
-Leave it at 256 unless you prefer smaller groups.
+Leave it at 256 unless you prefer smaller groups per shader.
 
-Note: Larger packs mainly use a tiny bit more texture memory; they do not significantly increase the performance cost of the active MultiLUT shader. Splitting into smaller chunks is primarily for easier browsing and organization.
+Note: Larger packs do use a tiny bit more texture memory; but they do not significantly increase the performance cost of the active MultiLUT shader. Splitting into smaller chunks is primarily for easier browsing, organization or distribution.
 
 ## Pre-LUT / input transform
 
 Leave this as **None** for normal use.
 
-Use a Pre-LUT when all LUTs in the pack expect the same conversion first — for example, applying a **Rec.709 → Log** conversion LUT before LUTs designed for Log color inputs.
+Use a Pre-LUT when all LUTs in the pack expect the same conversion first — for example, applying a **Rec.709 → Log** 'conversion LUT' before LUTs that are designed for Log color inputs, so that the LUT is correctly applied.
 
 The transform is baked into the generated pack automatically so that no other LUT shader is required in the fx stack.
 
