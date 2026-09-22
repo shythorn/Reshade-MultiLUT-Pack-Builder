@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="description" content="Convert .cube/.3dl LUT files into custom ReShade's MultiLUT Shader." />
+<title>MultiLUT Pack Builder v1.3</title>
+<style>
+  :root{
+    color-scheme:dark;
+    --bg:#0f1115;--panel:#171a21;--panel2:#1d222b;--line:#2c3440;--text:#e8edf4;--muted:#9aa7b5;
+    --accent:#6ea8fe;--accent2:#90c2ff;--good:#62d394;--warn:#f3bf5b;--bad:#ff7676;
+  }
+  *{box-sizing:border-box} html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  body{min-height:100vh}.wrap{max-width:980px;margin:0 auto;padding:28px 18px 48px}
+  h1{font-size:26px;margin:0 0 6px} .sub{color:var(--muted);margin-bottom:22px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin:14px 0;box-shadow:0 10px 30px rgba(0,0,0,.16)}
+  .drop{border:1.5px dashed #465264;border-radius:12px;padding:34px 18px;text-align:center;background:var(--panel2);transition:.15s}
+  .drop.drag{border-color:var(--accent);background:#182233}.drop strong{font-size:16px}.muted{color:var(--muted)}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}.row3{display:grid;grid-template-columns:2fr 1fr 1fr;gap:14px}
+  @media(max-width:720px){.row,.row3{grid-template-columns:1fr}}
+  label{display:block;color:#cdd6e2;font-weight:600;margin:0 0 6px}
+  input[type=text],input[type=number],select{width:100%;background:#10141a;border:1px solid #394453;color:var(--text);border-radius:8px;padding:10px 11px;outline:none}
+  input:focus,select:focus{border-color:var(--accent)}
+  button{appearance:none;border:1px solid #3b4655;background:#232a34;color:var(--text);border-radius:9px;padding:10px 13px;font-weight:650;cursor:pointer}
+  button:hover{border-color:#596879;background:#2a3340}button.primary{background:#2468b4;border-color:#2f7dce}button.primary:hover{background:#2b75c5}
+  button:disabled{opacity:.48;cursor:not-allowed}.buttons{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
+  .stats{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px}.pill{border:1px solid var(--line);background:#11161d;border-radius:999px;padding:6px 10px;color:#cbd6e3}
+  .filelist{max-height:300px;overflow:auto;margin-top:12px;border:1px solid var(--line);border-radius:9px;background:#10141a;display:none}
+  .filetable{width:100%;border-collapse:collapse;min-width:680px}.filetable th{position:sticky;top:0;background:#151a22;color:#bfcada;text-align:left;font-size:12px;padding:8px 10px;border-bottom:1px solid var(--line);z-index:1}.filetable td{padding:7px 10px;border-bottom:1px solid #242c36;vertical-align:middle}.filetable tr:last-child td{border-bottom:0}.filetable .path{max-width:420px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mini-select{padding:5px 7px!important;font-size:12px}.remove{padding:4px 8px;font-size:12px}.tag{display:inline-block;padding:2px 7px;border:1px solid #344150;border-radius:999px;font-size:11px;color:#c7d2df;background:#151b23}
+  .small{font-size:12px;color:var(--muted)}.adv{margin-top:12px}.adv summary{cursor:pointer;color:#cbd6e3}
+  .prelut-box{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#10141a;border:1px solid var(--line);border-radius:10px;padding:12px}.prelut-file{flex:1;min-width:260px}.prelut-name{font-weight:650;word-break:break-word}.hidden{display:none!important}
+  progress{width:100%;height:14px;accent-color:var(--accent)}
+  pre.log{white-space:pre-wrap;max-height:220px;overflow:auto;background:#0b0e12;border:1px solid var(--line);border-radius:9px;padding:11px;color:#b9c6d3;margin:10px 0 0}
+  .good{color:var(--good)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+  #selftest{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>MultiLUT Pack Builder <span class="small">v1.3</span></h1>
+  <div class="sub">Convert .cube/.3dl LUT files into custom ReShade's MultiLUT Shader.</div>
+  <div class="card">
+    <div id="drop" class="drop">
+      <strong>Drop LUT files or a folder here</strong><br>
+      <span class="muted">Supports .cube and common Autodesk/Lustre .3dl LUTs.</span>
+      <div class="buttons" style="justify-content:center">
+        <button id="browseFolder" title="Choose a folder and add all supported LUT files inside it.">Browse Folder</button>
+        <button id="browseFiles" title="Choose one or more .cube or .3dl LUT files.">Browse LUT Files</button>
+        <button id="clearFiles" title="Remove all LUTs from the current list.">Clear</button>
+      </div>
+      <input id="folderInput" type="file" webkitdirectory multiple hidden>
+      <input id="fileInput" type="file" accept=".cube,.3dl" multiple hidden>
+    </div>
+    <div class="stats">
+      <span class="pill"><b id="fileCount">0</b> LUT files</span>
+      <span class="pill"><b id="cubeCount">0</b> .cube</span>
+      <span class="pill"><b id="dlCount">0</b> .3dl</span>
+      <span class="pill"><b id="sizeCount">0 B</b> source size</span>
+    </div>
+    <div id="fileList" class="filelist"></div>
+  </div>
+
+  <div class="card">
+    <label>Pre-LUT / input transform <span class="small">(optional)</span></label>
+    <div class="small" style="margin:-2px 0 10px">Use this when every LUT expects the same input conversion first, such as Rec.709 → Log. Otherwise leave it as <b>None</b>.</div>
+    <div class="prelut-box">
+      <div class="prelut-file">
+        <div id="preLutName" class="prelut-name">None</div>
+        <div id="preLutMeta" class="small">No Pre-LUT selected.</div>
+      </div>
+      <button id="browsePreLut" title="Choose one LUT that will be applied before every creative LUT and baked into the output.">Choose Pre-LUT</button>
+      <button id="clearPreLut" title="Remove the selected Pre-LUT.">Clear</button>
+      <input id="preLutInput" type="file" accept=".cube,.3dl" hidden>
+    </div>
+    <div id="preLut3dlOptions" class="row hidden" style="margin-top:12px">
+      <div>
+        <label for="preLutOrder">Pre-LUT .3dl data order</label>
+        <select id="preLutOrder"><option value="blue">Autodesk/Lustre (blue fastest) — recommended</option><option value="red">Red fastest (non-standard override)</option></select>
+      </div>
+      <div class="small" style="align-self:end;padding-bottom:10px">Only for a .3dl Pre-LUT. Leave <b>Blue fastest</b> unless you know the file uses a different channel order.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row3">
+      <div>
+        <label for="packName">Pack name</label>
+        <input id="packName" type="text" value="MyMultiLUTPack" maxlength="100">
+        <div class="small">Used for the generated file names.</div>
+      </div>
+      <div>
+        <label for="chunkSize">Max LUTs per chunk</label>
+        <input id="chunkSize" type="number" value="256" min="1" max="256" step="1">
+        <div class="small">Splits large packs into multiple shaders. Up to 256 LUTs per shader.</div>
+      </div>
+      <div>
+        <label for="sortMode">Order</label>
+        <select id="sortMode"><option value="natural">Filename</option><option value="input">Input/drop order</option></select>
+      </div>
+    </div>
+    <details class="adv">
+      <summary>Advanced compatibility options</summary>
+      <div style="margin-top:12px">
+        <label for="dlOrder">.3dl data order</label>
+        <select id="dlOrder"><option value="blue">Autodesk/Lustre (blue fastest) — recommended</option><option value="red">Red fastest (non-standard override)</option></select>
+        <div class="small" style="margin-top:6px">If a .3dl converts with obviously wrong colors, try <b>Red fastest</b> for that file. .cube ordering is handled automatically.</div>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <div class="buttons" style="margin-top:0">
+      <button id="convert" class="primary" title="Convert all valid LUTs, build MultiLUT atlases and shaders, then download one ZIP." disabled>Convert & Download ZIP</button>
+    </div>
+    <div style="margin-top:13px"><progress id="progress" max="100" value="0"></progress></div>
+    <div id="status" class="small" style="margin-top:7px">Add LUT files to begin.</div>
+    <details class="adv">
+      <summary>Details</summary>
+      <pre id="log" class="log">Ready.</pre>
+    </details>
+  </div>
+
+  <pre id="selftest"></pre>
+</div>
+<script>
+'use strict';
+
+const LUT_SIZE = 32;
+const STRIP_W = LUT_SIZE * LUT_SIZE; // 1024, 32 blue slices side-by-side
+const STRIP_H = LUT_SIZE;
+const collator = new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
+let sources = [];
+let inputSerial = 0;
+let busy = false;
+let preLUTFile = null;
+
+const $ = id => document.getElementById(id);
+const logEl = $('log');
+function log(msg, cls=''){
+  const prefix = cls==='bad' ? '[ERROR] ' : cls==='warn' ? '[WARN] ' : '';
+  logEl.textContent += `\n${prefix}${msg}`;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function setStatus(msg){$('status').textContent=msg;}
+function nextFrame(){return new Promise(r=>setTimeout(r,0));}
+function extOf(name){const m=/\.([^.]+)$/.exec(name);return m?m[1].toLowerCase():'';}
+function formatBytes(n){if(n<1024)return `${n} B`;if(n<1048576)return `${(n/1024).toFixed(1)} KB`;return `${(n/1048576).toFixed(1)} MB`;}
+function baseName(name){return name.replace(/\.[^.]+$/,'');}
+
+function sanitizeWindowsName(s){
+  s=(s||'').trim().replace(/[<>:"/\\|?*\x00-\x1F]/g,'_').replace(/[. ]+$/g,'');
+  if(!s) s='MultiLUT_Pack';
+  if(/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(s)) s='_'+s;
+  return s.slice(0,100);
+}
+function shaderIdentifier(s){
+  let t=s.normalize('NFKD').replace(/[^A-Za-z0-9_]/g,'_').replace(/_+/g,'_');
+  if(!t||/^\d/.test(t)) t='MLUT_'+t;
+  return t.slice(0,80);
+}
+function shortHash(s){
+  let h=0x811c9dc5;
+  for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,0x01000193);}
+  return (h>>>0).toString(16).padStart(8,'0');
+}
+function uiSafeName(s){
+  return s.replace(/[\x00-\x1F]/g,' ').replace(/\\/g,'/').replace(/"/g,"'").trim().slice(0,96) || 'Unnamed LUT';
+}
+function escapeFxString(s){return uiSafeName(s).replace(/\\/g,'\\\\').replace(/"/g,'\\"');}
+
+function addSource(file, relPath=''){
+  const ext=extOf(file.name); if(ext!=='cube'&&ext!=='3dl') return;
+  const key=`${relPath||file.name}|${file.size}|${file.lastModified}`;
+  if(sources.some(x=>x.key===key)) return;
+  sources.push({file,relPath:relPath||file.name,key,serial:inputSerial++,dlOrderOverride:'default'});
+}
+function orderedSources(){
+  const list=sources.slice();
+  if($('sortMode').value==='natural') list.sort((a,b)=>collator.compare(a.relPath,b.relPath));
+  else list.sort((a,b)=>a.serial-b.serial);
+  return list;
+}
+function refreshFiles(){
+  const cubes=sources.filter(x=>extOf(x.file.name)==='cube').length;
+  const dls=sources.length-cubes;
+  $('fileCount').textContent=sources.length;$('cubeCount').textContent=cubes;$('dlCount').textContent=dls;
+  $('sizeCount').textContent=formatBytes(sources.reduce((a,x)=>a+x.file.size,0));
+  const fl=$('fileList');fl.innerHTML='';
+  if(sources.length){
+    fl.style.display='block';
+    const table=document.createElement('table');table.className='filetable';
+    table.innerHTML='<thead><tr><th>File</th><th>Format</th><th>.3DL order</th><th></th></tr></thead>';
+    const body=document.createElement('tbody');
+    for(const s of orderedSources()){
+      const tr=document.createElement('tr');
+      const ext=extOf(s.file.name);
+      const tdPath=document.createElement('td');tdPath.className='path';tdPath.title=s.relPath;tdPath.textContent=s.relPath;
+      const tdFmt=document.createElement('td');tdFmt.innerHTML=`<span class="tag">${ext.toUpperCase()}</span>`;
+      const tdOrder=document.createElement('td');
+      if(ext==='3dl'){
+        const sel=document.createElement('select');sel.className='mini-select orderOverride';sel.dataset.key=s.key;
+        const defaultName=$('dlOrder').value==='red'?'Default (Red fastest)':'Default (Blue fastest)';
+        sel.innerHTML=`<option value="default">${defaultName}</option><option value="blue">Blue fastest</option><option value="red">Red fastest</option>`;
+        sel.value=s.dlOrderOverride||'default';tdOrder.appendChild(sel);
+      } else { tdOrder.innerHTML='<span class="small">Standard</span>'; }
+      const tdRemove=document.createElement('td');const btn=document.createElement('button');btn.className='remove';btn.textContent='Remove';btn.dataset.key=s.key;tdRemove.appendChild(btn);
+      tr.append(tdPath,tdFmt,tdOrder,tdRemove);body.appendChild(tr);
+    }
+    table.appendChild(body);fl.appendChild(table);
+  } else fl.style.display='none';
+  $('convert').disabled=!sources.length||busy;
+  setStatus(sources.length?`${sources.length} LUT(s) ready.`:'Add LUT files to begin.');
+}
+$('fileList').addEventListener('change',e=>{
+  if(!e.target.classList.contains('orderOverride'))return;
+  const s=sources.find(x=>x.key===e.target.dataset.key);if(s)s.dlOrderOverride=e.target.value;
+});
+$('fileList').addEventListener('click',e=>{
+  if(!e.target.classList.contains('remove')||busy)return;
+  sources=sources.filter(x=>x.key!==e.target.dataset.key);refreshFiles();
+});
+$('sortMode').addEventListener('change',refreshFiles);
+$('dlOrder').addEventListener('change',refreshFiles);
+
+async function entryToFiles(entry,path=''){
+  const out=[];
+  if(entry.isFile){const f=await new Promise((res,rej)=>entry.file(res,rej));out.push({file:f,path:path+f.name});}
+  else if(entry.isDirectory){const reader=entry.createReader();let entries=[];while(true){const batch=await new Promise((res,rej)=>reader.readEntries(res,rej));if(!batch.length)break;entries.push(...batch);}for(const e of entries)out.push(...await entryToFiles(e,path+entry.name+'/'));}
+  return out;
+}
+
+function refreshPreLUT(){
+  const name=$('preLutName'),meta=$('preLutMeta'),opts=$('preLut3dlOptions');
+  if(!preLUTFile){
+    name.textContent='None';
+    meta.textContent='No Pre-LUT selected.';
+    opts.classList.add('hidden');
+    $('clearPreLut').disabled=true;
+    return;
+  }
+  const ext=extOf(preLUTFile.name);
+  name.textContent=preLUTFile.name;
+  meta.textContent=`${ext.toUpperCase()} • ${formatBytes(preLUTFile.size)} • baked before every creative LUT`;
+  opts.classList.toggle('hidden',ext!=='3dl');
+  $('clearPreLut').disabled=false;
+}
+$('browsePreLut').onclick=()=>!busy&&$('preLutInput').click();
+$('preLutInput').onchange=e=>{
+  const f=e.target.files&&e.target.files[0];
+  e.target.value='';
+  if(!f)return;
+  const ext=extOf(f.name);
+  if(ext!=='cube'&&ext!=='3dl'){log('Pre-LUT must be a .cube or .3dl file.','warn');return;}
+  preLUTFile=f;refreshPreLUT();log(`Pre-LUT selected: ${f.name}`);
+};
+$('clearPreLut').onclick=()=>{if(!busy){preLUTFile=null;refreshPreLUT();log('Pre-LUT cleared.');}};
+
+$('browseFolder').onclick=()=>!busy&&$('folderInput').click();
+$('browseFiles').onclick=()=>!busy&&$('fileInput').click();
+$('clearFiles').onclick=()=>{if(!busy){sources=[];refreshFiles();logEl.textContent='Ready.';}};
+$('folderInput').onchange=e=>{for(const f of e.target.files)addSource(f,f.webkitRelativePath||f.name);e.target.value='';refreshFiles();};
+$('fileInput').onchange=e=>{for(const f of e.target.files)addSource(f,f.name);e.target.value='';refreshFiles();};
+const drop=$('drop');
+for(const ev of ['dragenter','dragover'])drop.addEventListener(ev,e=>{e.preventDefault();if(!busy)drop.classList.add('drag');});
+for(const ev of ['dragleave','drop'])drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('drag');});
+drop.addEventListener('drop',async e=>{
+  if(busy)return;
+  let addedBefore=sources.length,folderEntries=0,folderApiAvailable=false;
+  // Chromium/Brave is most reliable for multi-file drops through DataTransfer.files.
+  for(const f of Array.from(e.dataTransfer.files||[])) addSource(f,f.name);
+  // Folder drops need the directory-entry API. Only recurse directories here so regular
+  // files are not accidentally reduced to the first DataTransferItem in some browsers.
+  for(const it of Array.from(e.dataTransfer.items||[])){
+    const getEntry=it.webkitGetAsEntry||it.getAsEntry;
+    if(typeof getEntry!=='function')continue;
+    folderApiAvailable=true;
+    const en=getEntry.call(it);
+    if(en&&en.isDirectory){folderEntries++;for(const x of await entryToFiles(en,''))addSource(x.file,x.path);}
+  }
+  refreshFiles();
+  const added=sources.length-addedBefore;
+  if(added) log(`Drop added ${added} LUT file(s)${folderEntries?` from ${folderEntries} folder(s)`:''}.`);
+  else if(folderEntries===0 && !folderApiAvailable) log('This browser did not expose folder-drop access. Use Browse Folder instead.', 'warn');
+  else if(!added) log('No .cube or .3dl files were found in the dropped item(s).', 'warn');
+});
+
+function parseNums(line){
+  const parts=line.trim().split(/[\s,]+/).filter(Boolean); if(parts.length<3)return null;
+  const nums=parts.map(Number); if(nums.some(v=>!Number.isFinite(v)))return null; return nums;
+}
+function perfectCube(n){const r=Math.round(Math.cbrt(n));return r>=2&&r*r*r===n?r:0;}
+function stripComment(line){const p=line.indexOf('#');if(p>=0)line=line.slice(0,p);const q=line.indexOf('//');if(q>=0)line=line.slice(0,q);return line.trim();}
+
+function parseCube(text,name='LUT.cube'){
+  text=text.replace(/^\uFEFF/,'');const lines=text.split(/\r?\n/);
+  let size3=0,size1=0,domainMin=[0,0,0],domainMax=[1,1,1],d1min=[0,0,0],d1max=[1,1,1];
+  let haveD1Range=false,haveD3Range=false;const rows=[];
+  for(let raw of lines){let line=stripComment(raw);if(!line)continue;let m;
+    if((m=/^LUT_3D_SIZE\s+(\d+)/i.exec(line))){size3=+m[1];continue;}
+    if((m=/^LUT_1D_SIZE\s+(\d+)/i.exec(line))){size1=+m[1];continue;}
+    if((m=/^DOMAIN_MIN\s+(.+)/i.exec(line))){const n=parseNums(m[1]);if(n){domainMin=n.slice(0,3);}continue;}
+    if((m=/^DOMAIN_MAX\s+(.+)/i.exec(line))){const n=parseNums(m[1]);if(n){domainMax=n.slice(0,3);}continue;}
+    if((m=/^LUT_3D_INPUT_RANGE\s+([^\s]+)\s+([^\s]+)/i.exec(line))){const a=+m[1],b=+m[2];if(Number.isFinite(a)&&Number.isFinite(b)){domainMin=[a,a,a];domainMax=[b,b,b];haveD3Range=true;}continue;}
+    if((m=/^LUT_1D_INPUT_RANGE\s+([^\s]+)\s+([^\s]+)/i.exec(line))){const a=+m[1],b=+m[2];if(Number.isFinite(a)&&Number.isFinite(b)){d1min=[a,a,a];d1max=[b,b,b];haveD1Range=true;}continue;}
+    if(/^(TITLE|LUT_3D_INPUT_RANGE|LUT_1D_INPUT_RANGE)/i.test(line))continue;
+    const n=parseNums(line);if(n&&n.length===3)rows.push(n);
+  }
+  if(!size3&&!size1)throw new Error(`${name}: no LUT_3D_SIZE or LUT_1D_SIZE header.`);
+  let oneD=null,threeD=null;
+  if(size1){
+    if(rows.length<size1)throw new Error(`${name}: expected ${size1} 1D rows, found ${rows.length}.`);
+    oneD=new Float32Array(size1*3);for(let i=0;i<size1;i++){oneD[i*3]=rows[i][0];oneD[i*3+1]=rows[i][1];oneD[i*3+2]=rows[i][2];}
+  }
+  if(size3){const need=size3*size3*size3;let start=size1;
+    if(rows.length-start<need && rows.length>=need)start=0;
+    if(rows.length-start<need)throw new Error(`${name}: expected ${need} 3D rows, found ${Math.max(0,rows.length-start)}.`);
+    threeD=new Float32Array(need*3);for(let i=0;i<need;i++){const r=rows[start+i];threeD[i*3]=r[0];threeD[i*3+1]=r[1];threeD[i*3+2]=r[2];}
+  }
+  if(!haveD1Range){d1min=domainMin.slice();d1max=domainMax.slice();}
+  return {format:'cube',size3,size1,threeD,oneD,domainMin,domainMax,d1min,d1max,sourceOrder:'red'};
+}
+
+function inferIntegerScale(maxv){
+  if(maxv<=1.000001)return 1;if(maxv<=255)return 255;if(maxv<=1023)return 1023;if(maxv<=4095)return 4095;if(maxv<=16383)return 16383;if(maxv<=65535)return 65535;return maxv||1;
+}
+function parse3DL(text,name='LUT.3dl',order='blue'){
+  text=text.replace(/^\uFEFF/,'');const lines=text.split(/\r?\n/);let mesh=null;const triples=[];let explicitSize=0;
+  for(let raw of lines){let line=stripComment(raw);if(!line||/^;/i.test(line))continue;let m;
+    if((m=/^(?:LUT_3D_SIZE|MESH_SIZE|CUBE_SIZE)\s+(\d+)/i.exec(line))){explicitSize=+m[1];continue;}
+    if(/^3DMESH/i.test(line))continue;
+    const nums=parseNums(line);if(!nums)continue;
+    if(nums.length>3 && !mesh){mesh=nums.slice();continue;}
+    if(nums.length===3)triples.push(nums);
+  }
+  let size=explicitSize||perfectCube(triples.length),drop=0;
+  if(!size){for(let d=1;d<=3&&d<triples.length;d++){const p=perfectCube(triples.length-d);if(p){size=p;drop=d;break;}}}
+  if(!size)throw new Error(`${name}: could not infer a cubic 3D grid from ${triples.length} data rows.`);
+  const need=size*size*size;if(triples.length-drop<need)throw new Error(`${name}: expected ${need} data rows, found ${triples.length-drop}.`);
+  const dataRows=triples.slice(drop,drop+need);
+  let maxv=0;for(const r of dataRows)for(const v of r)if(v>maxv)maxv=v;const scale=inferIntegerScale(maxv);
+  const threeD=new Float32Array(need*3);
+  for(let r=0;r<size;r++)for(let g=0;g<size;g++)for(let b=0;b<size;b++){
+    const src=order==='blue' ? (b + size*(g + size*r)) : (r + size*(g + size*b));
+    const dst=r + size*(g + size*b);const row=dataRows[src];
+    threeD[dst*3]=row[0]/scale;threeD[dst*3+1]=row[1]/scale;threeD[dst*3+2]=row[2]/scale;
+  }
+  let knots=null;
+  if(mesh&&mesh.length===size){let mm=Math.max(...mesh.map(Math.abs))||1;knots=mesh.map(v=>v/mm);if(knots[0]>knots[knots.length-1])knots.reverse();}
+  return {format:'3dl',size3:size,size1:0,threeD,oneD:null,domainMin:[0,0,0],domainMax:[1,1,1],knots,sourceOrder:order,scale};
+}
+
+function clamp01(v){return v<0?0:v>1?1:v;}
+function axisMap(v,n,minv,maxv,knots=null){
+  if(knots&&knots.length===n){v=clamp01(v);if(v<=knots[0])return [0,0,0];if(v>=knots[n-1])return [n-1,n-1,0];let lo=0,hi=n-1;while(hi-lo>1){const mid=(lo+hi)>>1;if(knots[mid]<=v)lo=mid;else hi=mid;}const den=knots[hi]-knots[lo];return [lo,hi,den>1e-12?(v-knots[lo])/den:0];}
+  const den=maxv-minv;let t=den!==0?(v-minv)/den:0;t=clamp01(t)*(n-1);const i0=Math.floor(t),i1=Math.min(n-1,i0+1);return [i0,i1,t-i0];
+}
+function sample1D(lut,v,channel,minv,maxv){const n=lut.length/3;let t=(maxv!==minv?(v-minv)/(maxv-minv):0);t=clamp01(t)*(n-1);const i=Math.floor(t),j=Math.min(n-1,i+1),f=t-i;return lut[i*3+channel]*(1-f)+lut[j*3+channel]*f;}
+function sample3DParsed(L,r,g,b){
+  if(L.oneD){r=sample1D(L.oneD,r,0,L.d1min[0],L.d1max[0]);g=sample1D(L.oneD,g,1,L.d1min[1],L.d1max[1]);b=sample1D(L.oneD,b,2,L.d1min[2],L.d1max[2]);}
+  if(!L.threeD)return [clamp01(r),clamp01(g),clamp01(b)];
+  const n=L.size3;const ax=axisMap(r,n,L.domainMin[0],L.domainMax[0],L.knots),ay=axisMap(g,n,L.domainMin[1],L.domainMax[1],L.knots),az=axisMap(b,n,L.domainMin[2],L.domainMax[2],L.knots);
+  const [x0,x1,fx]=ax,[y0,y1,fy]=ay,[z0,z1,fz]=az;const d=L.threeD;
+  function C(x,y,z,c){return d[(x+n*(y+n*z))*3+c];}
+  const out=[0,0,0];for(let c=0;c<3;c++){
+    const c000=C(x0,y0,z0,c),c100=C(x1,y0,z0,c),c010=C(x0,y1,z0,c),c110=C(x1,y1,z0,c),c001=C(x0,y0,z1,c),c101=C(x1,y0,z1,c),c011=C(x0,y1,z1,c),c111=C(x1,y1,z1,c);
+    const a0=c000+(c100-c000)*fx,a1=c010+(c110-c010)*fx,b0=c001+(c101-c001)*fx,b1=c011+(c111-c011)*fx;
+    const q0=a0+(a1-a0)*fy,q1=b0+(b1-b0)*fy;out[c]=q0+(q1-q0)*fz;
+  }return out;
+}
+function resampleToStrip(L,preLUT=null){
+  const out=new Uint8Array(STRIP_W*STRIP_H*4);let clipped=0,p=0;
+  for(let g=0;g<LUT_SIZE;g++){const G=g/(LUT_SIZE-1);for(let b=0;b<LUT_SIZE;b++){const B=b/(LUT_SIZE-1);for(let r=0;r<LUT_SIZE;r++){const R=r/(LUT_SIZE-1);const input=preLUT?sample3DParsed(preLUT,R,G,B):[R,G,B];const c=sample3DParsed(L,input[0],input[1],input[2]);for(let k=0;k<3;k++){if(c[k]<0||c[k]>1)clipped++;out[p++]=Math.round(clamp01(c[k])*255);}out[p++]=255;}}}
+  return {bytes:out,clipped};
+}
+
+// --- PNG writer (exact RGBA8 bytes; no canvas color management) ---
+const crcTable=(()=>{const t=new Uint32Array(256);for(let i=0;i<256;i++){let c=i;for(let k=0;k<8;k++)c=(c&1)?0xEDB88320^(c>>>1):c>>>1;t[i]=c>>>0;}return t;})();
+function crc32(bytes){let c=0xFFFFFFFF;for(const b of bytes)c=crcTable[(c^b)&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+function adler32(bytes){let a=1,b=0;const MOD=65521;for(let i=0;i<bytes.length;i++){a=(a+bytes[i])%MOD;b=(b+a)%MOD;}return ((b<<16)|a)>>>0;}
+function u32be(n){return new Uint8Array([(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255]);}
+function u16le(n){return new Uint8Array([n&255,(n>>>8)&255]);}function u32le(n){return new Uint8Array([n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255]);}
+function concatBytes(parts){const n=parts.reduce((a,p)=>a+p.length,0),o=new Uint8Array(n);let q=0;for(const p of parts){o.set(p,q);q+=p.length;}return o;}
+const enc=new TextEncoder();
+function pngChunk(type,data){const t=enc.encode(type);return concatBytes([u32be(data.length),t,data,u32be(crc32(concatBytes([t,data])))]);}
+function zlibStore(raw){
+  const parts=[new Uint8Array([0x78,0x01])];let pos=0;while(pos<raw.length){const len=Math.min(65535,raw.length-pos),final=pos+len>=raw.length?1:0;parts.push(new Uint8Array([final]),u16le(len),u16le((~len)&0xFFFF),raw.subarray(pos,pos+len));pos+=len;}parts.push(u32be(adler32(raw)));return concatBytes(parts);
+}
+async function zlibCompress(raw){
+  if(typeof CompressionStream==='function'){
+    try{const cs=new CompressionStream('deflate');const readPromise=new Response(cs.readable).arrayBuffer();const w=cs.writable.getWriter();await w.write(raw);await w.close();return new Uint8Array(await readPromise);}catch(_){/*fallback*/}
+  }
+  return zlibStore(raw);
+}
+async function encodePNG(strips){
+  const width=STRIP_W,height=strips.length*STRIP_H,rowBytes=width*4;const raw=new Uint8Array(height*(rowBytes+1));let dst=0;
+  for(let li=0;li<strips.length;li++){const s=strips[li];for(let y=0;y<STRIP_H;y++){raw[dst++]=0;const start=y*rowBytes;raw.set(s.subarray(start,start+rowBytes),dst);dst+=rowBytes;}}
+  const ihdr=concatBytes([u32be(width),u32be(height),new Uint8Array([8,6,0,0,0])]);const idat=await zlibCompress(raw);
+  return concatBytes([new Uint8Array([137,80,78,71,13,10,26,10]),pngChunk('IHDR',ihdr),pngChunk('IDAT',idat),pngChunk('IEND',new Uint8Array())]);
+}
+
+function buildShader(fileBase,lutNames){
+  const count=lutNames.length,tex=`${fileBase}.png`,id=shaderIdentifier(fileBase),items=lutNames.map(escapeFxString).join('\\000')+'\\000';
+  // ReShade shares texture resources with identical declaration names across different effect files.
+  // Give every generated shader/chunk its own deterministic resource name so separate MultiLUT packs can coexist safely.
+  const resourceId=shaderIdentifier(`${fileBase}_${shortHash(fileBase+'|'+tex)}`);
+  const texVar=`texMultiLUT_${resourceId}`, samplerVar=`SamplerMultiLUT_${resourceId}`;
+  return `// Generated by MultiLUT Pack Builder v1.3
+// Texture: ${tex}
+// Resource ID: ${resourceId} (unique per generated shader to prevent ReShade cross-effect texture sharing)
+//
+// MultiLUT sampling logic adapted from MultiLUT.fx by Frans Bouma (Otis / Infuse Project),
+// which is based on Marty McFly's LUT shader 1.0 for ReShade 3.0.
+// Copyright (c) 2018 Frans Bouma
+// Copyright (c) 2008-2016 Marty McFly
+//
+// OtisFX MultiLUT is distributed under the MIT License:
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+#define MLUT_TEXTURE_NAME "${tex.replace(/"/g,"'")}"
+#define MLUT_TILE_SIZE ${LUT_SIZE}
+#define MLUT_TILE_AMOUNT ${LUT_SIZE}
+#define MLUT_LUT_AMOUNT ${count}
+#define MLUT_ITEMS "${items}"
+
+uniform int MLUT_LutSelector <
+    ui_type = "combo";
+    ui_items = MLUT_ITEMS;
+    ui_label = "LUT";
+    ui_tooltip = "Select the LUT from this generated atlas.";
+> = 0;
+
+uniform float MLUT_Intensity <
+    ui_type = "slider"; ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
+    ui_label = "Overall LUT intensity";
+    ui_tooltip = "Blend between the original image (0) and the full LUT result (1).";
+> = 1.0;
+
+uniform float MLUT_AmountChroma <
+    ui_type = "slider"; ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
+    ui_label = "LUT chroma amount";
+    ui_tooltip = "How strongly the LUT changes color/chroma. Lower values keep more of the original color."; 
+> = 1.0;
+
+uniform float MLUT_AmountLuma <
+    ui_type = "slider"; ui_min = 0.0; ui_max = 1.0; ui_step = 0.01;
+    ui_label = "LUT luma amount";
+    ui_tooltip = "How strongly the LUT changes brightness/luma. Lower values keep more of the original brightness."; 
+> = 1.0;
+
+#include "ReShade.fxh"
+
+texture ${texVar} < source = MLUT_TEXTURE_NAME; >
+{
+    Width = MLUT_TILE_SIZE * MLUT_TILE_AMOUNT;
+    Height = MLUT_TILE_SIZE * MLUT_LUT_AMOUNT;
+    Format = RGBA8;
+};
+
+sampler ${samplerVar} { Texture = ${texVar}; };
+
+float3 MLUT_SafeNormalize(float3 v)
+{
+    float len = length(v);
+    return len > 1e-6 ? v / len : float3(0.0, 0.0, 0.0);
+}
+
+void PS_${id}(float4 vpos : SV_Position, float2 texcoord : TEXCOORD, out float4 res : SV_Target0)
+{
+    float4 color = tex2D(ReShade::BackBuffer, texcoord);
+    float2 texelsize = 1.0 / MLUT_TILE_SIZE;
+    texelsize.x /= MLUT_TILE_AMOUNT;
+
+    float3 lutcoord = float3((color.xy * MLUT_TILE_SIZE - color.xy + 0.5) * texelsize.xy,
+                             color.z * MLUT_TILE_SIZE - color.z);
+    lutcoord.y /= MLUT_LUT_AMOUNT;
+    lutcoord.y += float(MLUT_LutSelector) / MLUT_LUT_AMOUNT;
+
+    float lerpfact = frac(lutcoord.z);
+    lutcoord.x += (lutcoord.z - lerpfact) * texelsize.y;
+
+    float3 lutcolor = lerp(tex2D(${samplerVar}, lutcoord.xy).xyz,
+                           tex2D(${samplerVar}, float2(lutcoord.x + texelsize.y, lutcoord.y)).xyz,
+                           lerpfact);
+
+    float3 graded = lerp(MLUT_SafeNormalize(color.xyz), MLUT_SafeNormalize(lutcolor), MLUT_AmountChroma) *
+                    lerp(length(color.xyz), length(lutcolor), MLUT_AmountLuma);
+    res.xyz = lerp(color.xyz, graded, MLUT_Intensity);
+    res.w = color.w;
+}
+
+technique ${id} < ui_label = "${fileBase.replace(/"/g,"'")}"; >
+{
+    pass
+    {
+        VertexShader = PostProcessVS;
+        PixelShader = PS_${id};
+    }
+}
+`;
+}
+
+function describePreLUT(preMeta){
+  if(!preMeta)return 'None';
+  const size=preMeta.srcSize?` • ${preMeta.srcSize}³`:'';
+  const order=preMeta.format==='3dl'?` • ${preMeta.order}-fastest`:'';
+  return `${preMeta.name} (${preMeta.format.toUpperCase()}${size}${order})`;
+}
+function buildList(fileBase,chunkNo,totalChunks,items,preMeta){
+  const lines=[`Pack chunk: ${fileBase}`,`Chunk: ${chunkNo} of ${totalChunks}`,`Atlas: ${fileBase}.png`,`Shader: ${fileBase}.fx`,`LUT grid: 32 x 32 x 32`,`LUT count: ${items.length}`,`Baked Pre-LUT: ${describePreLUT(preMeta)}`];
+  if(preMeta)lines.push('Composition: CreativeLUT(PreLUT(input))');
+  lines.push('','Selector | LUT name | Source file | Source format | Source size | 3DL order','---------|----------|-------------|---------------|-------------|----------');
+  items.forEach((x,i)=>lines.push(`${i} | ${x.label} | ${x.source||'(generated)'} | ${x.format} | ${x.srcSize||32}³ | ${x.order||'standard'}`));return lines.join('\r\n')+'\r\n';
+}
+function buildReadme(pack,totalChunks,errors,preMeta){return `MultiLUT Pack Builder output\r\n============================\r\n\r\nPack: ${pack}\r\nShaders: ${totalChunks}\r\nPre-LUT: ${describePreLUT(preMeta)}\r\n\r\nINSTALL\r\n1. Copy Shaders\\*.fx to your ReShade Shaders folder.\r\n2. Copy Textures\\*.png to your ReShade Textures folder.\r\n3. Reload ReShade, enable the generated shader, and choose a LUT from its dropdown.\r\n\r\nThe Lists folder shows which source LUT belongs to each selector entry.\r\n${totalChunks>1?'This pack was split into multiple shaders to keep the LUT lists manageable.\r\n':''}${preMeta?'The selected Pre-LUT/input transform was baked into every LUT in this pack.\r\n':''}\r\nCredits: generated MultiLUT shader logic follows Frans Bouma / OtisFX, based on Marty McFly / Pascal Gilcher LUT shader work.\r\nConversion errors/skips: ${errors}\r\n`;}
+
+// --- ZIP writer (store method; PNG data is already compressed internally) ---
+function dosDateTime(d=new Date()){let year=Math.max(1980,d.getFullYear());const date=((year-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate();const time=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1);return {date,time};}
+function makeZip(entries){
+  const locals=[],centrals=[];let offset=0;const dt=dosDateTime();
+  for(const e of entries){const name=enc.encode(e.name.replace(/\\/g,'/')),data=e.data instanceof Uint8Array?e.data:enc.encode(e.data),crc=crc32(data),flags=0x0800;
+    const local=concatBytes([u32le(0x04034b50),u16le(20),u16le(flags),u16le(0),u16le(dt.time),u16le(dt.date),u32le(crc),u32le(data.length),u32le(data.length),u16le(name.length),u16le(0),name,data]);locals.push(local);
+    const central=concatBytes([u32le(0x02014b50),u16le(20),u16le(20),u16le(flags),u16le(0),u16le(dt.time),u16le(dt.date),u32le(crc),u32le(data.length),u32le(data.length),u16le(name.length),u16le(0),u16le(0),u16le(0),u16le(0),u32le(0),u32le(offset),name]);centrals.push(central);offset+=local.length;
+  }
+  const centralBlock=concatBytes(centrals),localBlock=concatBytes(locals),end=concatBytes([u32le(0x06054b50),u16le(0),u16le(0),u16le(entries.length),u16le(entries.length),u32le(centralBlock.length),u32le(localBlock.length),u16le(0)]);return concatBytes([localBlock,centralBlock,end]);
+}
+function downloadBytes(bytes,name,type='application/zip'){const blob=new Blob([bytes],{type});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);}
+
+async function convertAll(){
+  if(busy||!sources.length)return;busy=true;refreshFiles();$('convert').disabled=true;$('progress').value=0;logEl.textContent='Starting conversion…';
+  try{
+    const pack=sanitizeWindowsName($('packName').value),chunkSize=Math.max(1,Math.min(256,parseInt($('chunkSize').value)||256)),defaultOrder=$('dlOrder').value;
+    $('packName').value=pack;$('chunkSize').value=chunkSize;
+    let preParsed=null,preMeta=null;
+    if(preLUTFile){
+      setStatus(`Parsing Pre-LUT: ${preLUTFile.name}`);await nextFrame();
+      const preExt=extOf(preLUTFile.name),preText=await preLUTFile.text(),preOrder=$('preLutOrder').value;
+      try{
+        preParsed=preExt==='cube'?parseCube(preText,preLUTFile.name):parse3DL(preText,preLUTFile.name,preOrder);
+        preMeta={name:preLUTFile.name,format:preExt,srcSize:preParsed.size3||preParsed.size1||0,order:preExt==='3dl'?preParsed.sourceOrder:'standard'};
+        log(`Pre-LUT enabled: ${describePreLUT(preMeta)}.`);
+      }catch(err){throw new Error(`Pre-LUT ${preLUTFile.name}: ${err.message||err}`);}
+    }
+    let list=sources.slice();if($('sortMode').value==='natural')list.sort((a,b)=>collator.compare(a.relPath,b.relPath));else list.sort((a,b)=>a.serial-b.serial);
+    const success=[],errors=[];const total=list.length;
+    for(let i=0;i<list.length;i++){
+      const s=list[i];setStatus(`Converting ${i+1}/${total}: ${s.file.name}`);$('progress').value=(i/Math.max(1,total))*82;await nextFrame();
+      try{const text=await s.file.text();const ext=extOf(s.file.name);const effectiveOrder=s.dlOrderOverride&&s.dlOrderOverride!=='default'?s.dlOrderOverride:defaultOrder;const parsed=ext==='cube'?parseCube(text,s.file.name):parse3DL(text,s.file.name,effectiveOrder);const rs=resampleToStrip(parsed,preParsed);const label=uiSafeName(baseName(s.file.name));success.push({bytes:rs.bytes,label,source:s.relPath,format:ext,srcSize:parsed.size3||parsed.size1||0,clipped:rs.clipped,order:ext==='3dl'?parsed.sourceOrder:'standard'});if(rs.clipped)log(`${s.file.name}: ${rs.clipped} sampled channel value(s) clipped to 0..1.`, 'warn');}
+      catch(err){errors.push(`${s.relPath}: ${err.message||err}`);log(`${s.relPath}: ${err.message||err}`,'bad');}
+    }
+    if(!success.length)throw new Error('No LUTs converted successfully. Check the log for format errors.');
+    const chunks=[];for(let i=0;i<success.length;i+=chunkSize)chunks.push(success.slice(i,i+chunkSize));const totalChunks=chunks.length;const zipEntries=[];let clippedFiles=0;
+    for(let ci=0;ci<chunks.length;ci++){
+      const base=ci===0?pack:`${pack}_${ci+1}`,srcItems=chunks[ci],items=[];const strips=[];
+      const seen=new Map();for(const x of srcItems){let label=x.label,n=(seen.get(label.toLowerCase())||0)+1;seen.set(label.toLowerCase(),n);if(n>1)label=`${label} (${n})`;items.push({...x,label});strips.push(x.bytes);if(x.clipped)clippedFiles++;}
+      setStatus(`Building chunk ${ci+1}/${totalChunks}: ${base}`);$('progress').value=82+(ci/Math.max(1,totalChunks))*16;await nextFrame();
+      const png=await encodePNG(strips),fx=buildShader(base,items.map(x=>x.label)),txt=buildList(base,ci+1,totalChunks,items,preMeta);const root=`${pack}/`;
+      zipEntries.push({name:`${root}Shaders/${base}.fx`,data:fx},{name:`${root}Textures/${base}.png`,data:png},{name:`${root}Lists/${base}_List.txt`,data:txt});
+      log(`Built ${base}: ${items.length} LUT(s), ${STRIP_W}×${items.length*STRIP_H} atlas.`);
+    }
+    const root=`${pack}/`;zipEntries.push({name:`${root}README.txt`,data:buildReadme(pack,totalChunks,errors.length,preMeta)});if(errors.length)zipEntries.push({name:`${root}Conversion_Errors.txt`,data:errors.join('\r\n')+'\r\n'});
+    const zip=makeZip(zipEntries);$('progress').value=100;setStatus(`Done: ${success.length}/${total} LUT(s) converted into ${totalChunks} chunk(s).`);log(`Done. ${success.length}/${total} LUT(s) converted. ZIP size: ${formatBytes(zip.length)}.`);downloadBytes(zip,`${pack}_MultiLUT_Pack.zip`);
+  }catch(err){setStatus(`Conversion failed: ${err.message||err}`);log(err.stack||err.message||String(err),'bad');}
+  finally{busy=false;$('convert').disabled=!sources.length;}
+}
+$('convert').onclick=convertAll;
+
+// Built-in deterministic self-test for development / verification. Open with ?selftest=1.
+async function runSelfTest(){
+  const out=[];function ok(cond,msg){if(!cond)throw new Error(msg);out.push('PASS  '+msg);}try{
+    let cube='TITLE "Identity"\nLUT_3D_SIZE 2\nDOMAIN_MIN 0 0 0\nDOMAIN_MAX 1 1 1\n';for(let b=0;b<2;b++)for(let g=0;g<2;g++)for(let r=0;r<2;r++)cube+=`${r} ${g} ${b}\n`;
+    const C=parseCube(cube,'identity.cube'),cs=sample3DParsed(C,.25,.5,.75);ok(Math.abs(cs[0]-.25)<1e-6&&Math.abs(cs[1]-.5)<1e-6&&Math.abs(cs[2]-.75)<1e-6,'CUBE red-fastest identity parses/interpolates correctly');
+    let dl='0 1023\n';for(let r=0;r<2;r++)for(let g=0;g<2;g++)for(let b=0;b<2;b++)dl+=`${r*1023} ${g*1023} ${b*1023}\n`;
+    const D=parse3DL(dl,'identity.3dl','blue'),ds=sample3DParsed(D,.25,.5,.75);ok(Math.abs(ds[0]-.25)<.002&&Math.abs(ds[1]-.5)<.002&&Math.abs(ds[2]-.75)<.002,'3DL blue-fastest identity parses/transposes correctly');
+    const strip=resampleToStrip(C).bytes;ok(strip.length===1024*32*4,'Resampled strip is exactly 1024x32 RGBA8');
+    // Check a known atlas pixel: b=31, g=31, r=31 should be white.
+    const off=((31*1024)+(31*32+31))*4;ok(strip[off]===255&&strip[off+1]===255&&strip[off+2]===255,'Atlas axis layout is R across tile X, G on Y, B across horizontal slices');
+    let half='TITLE \"Half\"\nLUT_3D_SIZE 2\nDOMAIN_MIN 0 0 0\nDOMAIN_MAX 1 1 1\n';for(let b=0;b<2;b++)for(let g=0;g<2;g++)for(let r=0;r<2;r++)half+=`${r*.5} ${g*.5} ${b*.5}\n`;
+    const H=parseCube(half,'half.cube'),composed=resampleToStrip(C,H).bytes;ok(Math.abs(composed[off]-128)<=1&&Math.abs(composed[off+1]-128)<=1&&Math.abs(composed[off+2]-128)<=1,'Pre-LUT is baked before the creative LUT');
+    const png=await encodePNG([strip]);ok(png[0]===137&&String.fromCharCode(...png.slice(1,4))==='PNG','PNG encoder emits valid PNG signature');
+    const fx=buildShader('Test_Pack',['Identity','Film 01']);ok(fx.includes('MLUT_LUT_AMOUNT 2')&&fx.includes('Identity\\000Film 01\\000'),'FX generator emits safe NUL-delimited named combo items');
+    const fxNum=buildShader('Numeric',['1','2','10']);ok(fxNum.includes('MLUT_ITEMS \"1\\0002\\00010\\000\"'),'Numeric-only LUT names cannot merge into octal escape sequences');
+    const zip=makeZip([{name:'a.txt',data:'hello'}]);ok(zip[0]===0x50&&zip[1]===0x4b&&zip[2]===0x03&&zip[3]===0x04,'ZIP writer emits valid local-file signature');
+    out.push('ALL TESTS PASSED');
+  }catch(e){out.push('FAIL  '+(e.stack||e.message||e));}
+  const el=$('selftest');el.style.display='block';el.textContent=out.join('\n');document.title=out.some(x=>x.startsWith('FAIL'))?'SELFTEST FAIL':'SELFTEST PASS';
+}
+if(new URLSearchParams(location.search).get('selftest')==='1')runSelfTest();
+refreshFiles();
+refreshPreLUT();
+</script>
+</body>
+</html>
