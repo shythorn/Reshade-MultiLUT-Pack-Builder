@@ -2,7 +2,7 @@
 
 A browser tool that converts `.cube` and common Autodesk/Lustre `.3dl` LUTs into ReShade-compatible MultiLUT packs.
 
-**[Open MultiLUT Pack Builder](https://shythorn.github.io/Reshade-MultiLUT-Pack-Builder/)**
+**[Open MultiLUT Pack Builder](https://shythorn.github.io/Reshade-MultiLUT-Pack-Builder/)** or download .html from **[Releases Page](https://github.com/shythorn/Reshade-MultiLUT-Pack-Builder/releases)** and open in browser.
 
 Add your LUTs, convert, and download a ready-to-install ZIP.
 
@@ -35,11 +35,17 @@ Leave it at 256 unless you prefer smaller groups.
 
 Leave this as **None** for normal use.
 
-Use a Pre-LUT when all LUTs in the pack expect the same conversion first — for example, a **Rec.709 → Log** conversion before creative LUTs designed for that Log input. The transform is baked into the generated pack automatically.
+Use a Pre-LUT when all LUTs in the pack expect the same conversion first — for example, applying a **Rec.709 → Log** conversion LUT before LUTs designed for Log color inputs.
 
-## Download a local copy
+The transform is baked into the generated pack automatically so that no other LUT shader is required in the fx stack.
 
-If you want to keep the tool on your computer, download the standalone HTML file from the **[Releases](https://github.com/shythorn/Reshade-MultiLUT-Pack-Builder/releases)** page and open it in your browser.
+Currently, Pre-LUT can only be applied to the whole pack and is not customizable for each individual LUT.
+
+### `.3dl` data order
+
+Most Autodesk/Lustre `.3dl` files use **Blue fastest**, which is the default.
+
+If a `.3dl` LUT produces incorrect or strangely shifted colors, try switching it to **Red fastest** instead. This setting only affects `.3dl` files; `.cube` files do not need it.
 
 ## Credits
 
